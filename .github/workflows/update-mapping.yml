@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - 'mal-tmdb-mapping.json'
+      - 'README.md'
 
 jobs:
   update-data:
@@ -28,4 +34,4 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add mal-tmdb-mapping.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: auto-update anime mapping" && git push)
+          git diff --staged --quiet || (git commit -m "chore: auto-update anime mapping" && git push)

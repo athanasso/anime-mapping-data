@@ -2,12 +2,8 @@
  * generate_mapping.js
  *
  * Fetches Fribb anime-lists (MAL IDs -> TMDB IDs, season, episode_offset)
- * and generates a compact JSON keyed by MAL ID.
- *
- * We intentionally skip title/image fetching:
- * - Titles come from Jikan via a SEPARATE lookup (see generate_titles.js)
- *   or from TMDB in the app itself.
- * - This keeps the script fast (seconds, not hours).
+ * and enriches each entry with title and poster image from the Anime Offline Database.
+ * Generates a compact JSON keyed by MAL ID.
  *
  * Output: mal-tmdb-mapping.json
  * Run: node generate_mapping.js
@@ -16,22 +12,58 @@
 const fs = require('fs/promises');
 
 const FRIBB_URL = 'https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json';
+const AOD_RELEASE_URL = 'https://api.github.com/repos/manami-project/anime-offline-database/releases/latest';
 
 async function generateMapping() {
   try {
-    console.log('Fetching Fribb anime-lists...');
-    const res = await fetch(FRIBB_URL);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const fribbData = await res.json();
-    console.log('Fetched ' + fribbData.length + ' entries.');
+    console.log('1/4 Fetching Fribb anime-lists...');
+    const fribbRes = await fetch(FRIBB_URL);
+    if (!fribbRes.ok) throw new Error('Failed to fetch Fribb list: HTTP ' + fribbRes.status);
+    const fribbData = await fribbRes.json();
+    console.log(`Fetched ${fribbData.length} Fribb entries.`);
 
+    console.log('2/4 Fetching Anime Offline Database release metadata...');
+    const relRes = await fetch(AOD_RELEASE_URL, {
+      headers: { 'User-Agent': 'node-fetch' }
+    });
+    if (!relRes.ok) throw new Error('Failed to fetch AOD release info: HTTP ' + relRes.status);
+    const relData = await relRes.json();
+    const asset = relData.assets?.find(a => a.name === 'anime-offline-database-minified.json');
+    if (!asset) throw new Error('anime-offline-database-minified.json asset not found in latest release');
+
+    console.log(`Downloading Anime Offline Database (${(asset.size / (1024 * 1024)).toFixed(1)} MB)...`);
+    const aodRes = await fetch(asset.browser_download_url);
+    if (!aodRes.ok) throw new Error('Failed to download AOD: HTTP ' + aodRes.status);
+    const aodData = await aodRes.json();
+    console.log(`Fetched ${aodData.data.length} AOD entries.`);
+
+    console.log('3/4 Indexing Anime Offline Database by MAL ID...');
+    const malDetailsMap = new Map();
+    for (const item of aodData.data) {
+      if (!Array.isArray(item.sources)) continue;
+      for (const src of item.sources) {
+        const match = src.match(/^https:\/\/myanimelist\.net\/anime\/(\d+)(?:\/|$)/);
+        if (match) {
+          const id = parseInt(match[1], 10);
+          if (!malDetailsMap.has(id)) {
+            malDetailsMap.set(id, {
+              title: item.title || null,
+              picture: item.picture || null,
+            });
+          }
+        }
+      }
+    }
+    console.log(`Indexed ${malDetailsMap.size} unique MAL anime entries.`);
+
+    console.log('4/4 Merging into compact mapping...');
     const mapping = {};
 
     for (const anime of fribbData) {
       const malId = anime.mal_id;
       if (!malId) continue;
 
-      // Only map TV entries that have a TMDB ID
+      // Only map TV entries that have a TMDB TV ID
       const tmdbId = anime.themoviedb_id && anime.themoviedb_id.tv
         ? anime.themoviedb_id.tv
         : null;
@@ -46,21 +78,25 @@ async function generateMapping() {
         ? (anime.imdb_id[0] || null)
         : (anime.imdb_id || null);
 
-      // title_en and image are populated by the separate title-enrichment step
-      // or left as null to be resolved by the app from TMDB
+      const details = malDetailsMap.get(malId);
+
       mapping[malId] = {
         tmdb_id: tmdbId,
         season: seasonTmdb,
         episode_offset: episodeOffset,
+        title: details?.title || null,
+        poster: details?.picture || null,
         type: anime.type || null,
         imdb_id: imdbId,
       };
     }
 
     const count = Object.keys(mapping).length;
-    console.log('Mapped ' + count + ' MAL TV entries.');
-    await fs.writeFile('mal-tmdb-mapping.json', JSON.stringify(mapping));
-    console.log('Done! Output: mal-tmdb-mapping.json');
+    console.log(`Mapped ${count} MAL TV entries.`);
+
+    const outputJson = JSON.stringify(mapping);
+    await fs.writeFile('mal-tmdb-mapping.json', outputJson);
+    console.log(`Done! Output: mal-tmdb-mapping.json (${(Buffer.byteLength(outputJson) / 1024).toFixed(1)} KB)`);
   } catch (err) {
     console.error('Failed:', err);
     process.exit(1);
