@@ -1,0 +1,10 @@
+{
+  "name": "anime-mapping-data",
+  "version": "1.0.0",
+  "description": "Daily cron job that generates a MAL-to-TMDB mapping JSON for the Media Tracker app.",
+  "main": "generate_mapping.js",
+  "scripts": {
+    "generate": "node generate_mapping.js"
+  },
+  "license": "MIT"
+}
