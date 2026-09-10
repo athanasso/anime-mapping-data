@@ -1,6 +1,6 @@
 # anime-mapping-data
 
-Automated daily cron job that generates a compact MAL-to-TMDB mapping JSON for the [Media Tracker](https://github.com/athanasso/media-tracker) app.
+Automated daily cron job that generates a compact MAL-to-TMDB mapping JSON for the [Media Tracker](https://play.google.com/store/apps/details?id=com.athanasso.mediatracker) app.
 
 ## What it does
 
