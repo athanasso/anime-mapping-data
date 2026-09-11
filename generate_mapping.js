@@ -1,77 +1,128 @@
 /**
  * generate_mapping.js
  *
- * Fetches Fribb anime-lists (MAL IDs -> TMDB IDs, season, episode_offset)
- * and enriches each entry with title and poster image from the Anime Offline Database.
- * Generates a compact JSON keyed by MAL ID.
+ * 100% automated anime mapping generator for Media Tracker.
+ * 
+ * 1. Fetches official MAL -> TMDB mappings from Fribb anime-lists.
+ * 2. Uses a persistent local cache (anime-cache.json) for titles & posters.
+ * 3. Automatically enriches newly announced/aired anime via Jikan & Kitsu APIs.
  *
- * Output: mal-tmdb-mapping.json
- * Run: node generate_mapping.js
+ * No external 60MB database downloads. Completely self-contained.
  */
 
 const fs = require('fs/promises');
+const path = require('path');
 
 const FRIBB_URL = 'https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json';
-const AOD_RELEASE_URL = 'https://api.github.com/repos/cedya77/anime-offline-database/releases/latest';
+const CACHE_FILE = path.join(__dirname, 'anime-cache.json');
+const OUTPUT_FILE = path.join(__dirname, 'mal-tmdb-mapping.json');
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fetchMetadataForMalId(malId) {
+  // 1. Try Jikan (Unofficial MAL API)
+  try {
+    const res = await fetch(`https://api.jikan.moe/v4/anime/${malId}`, {
+      headers: { 'User-Agent': 'anime-mapping-data-crawler/1.0' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const anime = data.data;
+      if (anime) {
+        return {
+          title: anime.title || anime.title_english || null,
+          poster: anime.images?.jpg?.large_image_url || anime.images?.jpg?.image_url || null,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn(`[Jikan] Failed for MAL ${malId}:`, err.message);
+  }
+
+  // 2. Fallback to Kitsu API
+  try {
+    const res = await fetch(
+      `https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=${malId}&include=item`,
+      { headers: { 'Accept': 'application/vnd.api+json' } }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const item = data.included?.[0];
+      if (item?.attributes) {
+        return {
+          title: item.attributes.canonicalTitle || item.attributes.titles?.en || null,
+          poster: item.attributes.posterImage?.large || item.attributes.posterImage?.original || null,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn(`[Kitsu] Failed for MAL ${malId}:`, err.message);
+  }
+
+  return { title: null, poster: null };
+}
 
 async function generateMapping() {
   try {
-    console.log('1/4 Fetching Fribb anime-lists...');
+    console.log('1/4 Loading local metadata cache...');
+    let cache = {};
+    try {
+      const cacheRaw = await fs.readFile(CACHE_FILE, 'utf8');
+      cache = JSON.parse(cacheRaw);
+      console.log(`Loaded ${Object.keys(cache).length} cached anime entries.`);
+    } catch (e) {
+      console.log('No existing cache found, starting fresh.');
+    }
+
+    console.log('2/4 Fetching Fribb anime-lists...');
     const fribbRes = await fetch(FRIBB_URL);
     if (!fribbRes.ok) throw new Error('Failed to fetch Fribb list: HTTP ' + fribbRes.status);
     const fribbData = await fribbRes.json();
     console.log(`Fetched ${fribbData.length} Fribb entries.`);
 
-    console.log('2/4 Fetching Anime Offline Database release metadata...');
-    const ghHeaders = { 'User-Agent': 'anime-mapping-updater' };
-    if (process.env.GITHUB_TOKEN) {
-      ghHeaders['Authorization'] = 'Bearer ' + process.env.GITHUB_TOKEN;
-    }
-    const relRes = await fetch(AOD_RELEASE_URL, {
-      headers: ghHeaders
-    });
-    if (!relRes.ok) throw new Error('Failed to fetch AOD release info: HTTP ' + relRes.status);
-    const relData = await relRes.json();
-    const asset = relData.assets?.find(a => a.name === 'anime-offline-database-minified.json');
-    if (!asset) throw new Error('anime-offline-database-minified.json asset not found in latest release');
-
-    console.log(`Downloading Anime Offline Database (${(asset.size / (1024 * 1024)).toFixed(1)} MB)...`);
-    const aodRes = await fetch(asset.browser_download_url);
-    if (!aodRes.ok) throw new Error('Failed to download AOD: HTTP ' + aodRes.status);
-    const aodData = await aodRes.json();
-    console.log(`Fetched ${aodData.data.length} AOD entries.`);
-
-    console.log('3/4 Indexing Anime Offline Database by MAL ID...');
-    const malDetailsMap = new Map();
-    for (const item of aodData.data) {
-      if (!Array.isArray(item.sources)) continue;
-      for (const src of item.sources) {
-        const match = src.match(/^https:\/\/myanimelist\.net\/anime\/(\d+)(?:\/|$)/);
-        if (match) {
-          const id = parseInt(match[1], 10);
-          if (!malDetailsMap.has(id)) {
-            malDetailsMap.set(id, {
-              title: item.title || null,
-              picture: item.picture || null,
-            });
-          }
-        }
-      }
-    }
-    console.log(`Indexed ${malDetailsMap.size} unique MAL anime entries.`);
-
-    console.log('4/4 Merging into compact mapping...');
-    const mapping = {};
+    console.log('3/4 Checking for newly added anime...');
+    const missingMalIds = [];
+    const validAnime = [];
 
     for (const anime of fribbData) {
       const malId = anime.mal_id;
       if (!malId) continue;
 
-      // Only map TV entries that have a TMDB TV ID
       const tmdbId = anime.themoviedb_id && anime.themoviedb_id.tv
         ? anime.themoviedb_id.tv
         : null;
       if (!tmdbId) continue;
+
+      validAnime.push(anime);
+
+      if (!cache[malId]) {
+        missingMalIds.push(malId);
+      }
+    }
+
+    console.log(`Found ${validAnime.length} TV-mapped entries (${missingMalIds.length} new without metadata).`);
+
+    if (missingMalIds.length > 0) {
+      console.log(`Fetching metadata for ${missingMalIds.length} new anime...`);
+      const toFetch = missingMalIds.slice(0, 50);
+      for (let i = 0; i < toFetch.length; i++) {
+        const id = toFetch[i];
+        console.log(`[${i + 1}/${toFetch.length}] Enriching MAL ID ${id}...`);
+        const meta = await fetchMetadataForMalId(id);
+        cache[id] = meta;
+        await sleep(400); // Polite rate limit
+      }
+
+      await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2), 'utf8');
+      console.log('Updated cache saved.');
+    }
+
+    console.log('4/4 Merging into compact mapping...');
+    const mapping = {};
+
+    for (const anime of validAnime) {
+      const malId = anime.mal_id;
+      const tmdbId = anime.themoviedb_id.tv;
 
       const seasonTmdb = (anime.season && anime.season.tmdb != null) ? anime.season.tmdb : 1;
       const episodeOffset =
@@ -82,14 +133,14 @@ async function generateMapping() {
         ? (anime.imdb_id[0] || null)
         : (anime.imdb_id || null);
 
-      const details = malDetailsMap.get(malId);
+      const details = cache[malId];
 
       mapping[malId] = {
         tmdb_id: tmdbId,
         season: seasonTmdb,
         episode_offset: episodeOffset,
         title: details?.title || null,
-        poster: details?.picture || null,
+        poster: details?.poster || null,
         type: anime.type || null,
         imdb_id: imdbId,
       };
@@ -99,7 +150,7 @@ async function generateMapping() {
     console.log(`Mapped ${count} MAL TV entries.`);
 
     const outputJson = JSON.stringify(mapping);
-    await fs.writeFile('mal-tmdb-mapping.json', outputJson);
+    await fs.writeFile(OUTPUT_FILE, outputJson);
     console.log(`Done! Output: mal-tmdb-mapping.json (${(Buffer.byteLength(outputJson) / 1024).toFixed(1)} KB)`);
   } catch (err) {
     console.error('Failed:', err);

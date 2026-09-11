@@ -4,11 +4,11 @@ Automated daily cron job that generates a compact MAL-to-TMDB mapping JSON for t
 
 ## What it does
 
-Fetches two community-maintained databases:
-1. **[Fribb/anime-lists](https://github.com/Fribb/anime-lists)** — Maps MAL IDs to TMDB IDs, season numbers, and episode offsets.
-2. **[cedya77/anime-offline-database](https://github.com/cedya77/anime-offline-database)** — Active continuation of anime-offline-database providing titles and cover art for each MAL entry.
+1. **[Fribb/anime-lists](https://github.com/Fribb/anime-lists)** — Fetches daily updated MAL-to-TMDB ID, season, and episode offset mappings.
+2. **Persistent Metadata Cache (`anime-cache.json`)** — Automatically maintains a local cache of official English/Romaji titles and cover posters.
+3. **Automated Auto-Enrichment** — When new anime entries are detected, automatically enriches them via Jikan & Kitsu APIs without any manual reviews or third-party database dependencies.
 
-Merges them into `mal-tmdb-mapping.json` — a single, minified JSON file updated every 24 hours via GitHub Actions.
+Merges everything into `mal-tmdb-mapping.json` — a single, minified JSON file updated daily via GitHub Actions.
 
 ## Output format
 
@@ -33,8 +33,8 @@ Merges them into `mal-tmdb-mapping.json` — a single, minified JSON file update
 | `episode_offset` | How many episodes into the TMDB season this MAL entry starts |
 | `type` | MAL media type (TV, OVA, MOVIE, etc.) |
 | `imdb_id` | IMDb ID if available |
-| `title` | English title from anime-offline-database |
-| `poster` | Cover image URL from MAL via anime-offline-database |
+| `title` | Anime title |
+| `poster` | Cover image URL |
 
 ## Usage
 
