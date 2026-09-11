@@ -39,7 +39,7 @@ Merges them into `mal-tmdb-mapping.json` — a single, minified JSON file update
 ## Usage
 
 ```
-https://raw.githubusercontent.com/YOUR_USERNAME/anime-mapping-data/main/mal-tmdb-mapping.json
+https://raw.githubusercontent.com/athanasso/anime-mapping-data/master/mal-tmdb-mapping.json
 ```
 
 ## Running locally
