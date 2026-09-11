@@ -6,7 +6,7 @@ Automated daily cron job that generates a compact MAL-to-TMDB mapping JSON for t
 
 Fetches two community-maintained databases:
 1. **[Fribb/anime-lists](https://github.com/Fribb/anime-lists)** — Maps MAL IDs to TMDB IDs, season numbers, and episode offsets.
-2. **[manami-project/anime-offline-database](https://github.com/manami-project/anime-offline-database)** — Provides English titles and cover art for each MAL entry.
+2. **[cedya77/anime-offline-database](https://github.com/cedya77/anime-offline-database)** — Active continuation of anime-offline-database providing titles and cover art for each MAL entry.
 
 Merges them into `mal-tmdb-mapping.json` — a single, minified JSON file updated every 24 hours via GitHub Actions.
 
@@ -21,7 +21,7 @@ Merges them into `mal-tmdb-mapping.json` — a single, minified JSON file update
     "type": "TV",
     "imdb_id": "tt0169255",
     "title": "Cardcaptor Sakura",
-    "image": "https://cdn.myanimelist.net/images/anime/1171/93271.jpg"
+    "poster": "https://cdn.myanimelist.net/images/anime/1171/93271.jpg"
   }
 }
 ```
@@ -34,7 +34,7 @@ Merges them into `mal-tmdb-mapping.json` — a single, minified JSON file update
 | `type` | MAL media type (TV, OVA, MOVIE, etc.) |
 | `imdb_id` | IMDb ID if available |
 | `title` | English title from anime-offline-database |
-| `image` | Cover image URL from MAL via anime-offline-database |
+| `poster` | Cover image URL from MAL via anime-offline-database |
 
 ## Usage
 
