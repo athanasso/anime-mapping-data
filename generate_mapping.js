@@ -12,7 +12,7 @@
 const fs = require('fs/promises');
 
 const FRIBB_URL = 'https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json';
-const AOD_RELEASE_URL = 'https://api.github.com/repos/manami-project/anime-offline-database/releases/latest';
+const AOD_RELEASE_URL = 'https://api.github.com/repos/cedya77/anime-offline-database/releases/latest';
 
 async function generateMapping() {
   try {
@@ -23,8 +23,12 @@ async function generateMapping() {
     console.log(`Fetched ${fribbData.length} Fribb entries.`);
 
     console.log('2/4 Fetching Anime Offline Database release metadata...');
+    const ghHeaders = { 'User-Agent': 'anime-mapping-updater' };
+    if (process.env.GITHUB_TOKEN) {
+      ghHeaders['Authorization'] = 'Bearer ' + process.env.GITHUB_TOKEN;
+    }
     const relRes = await fetch(AOD_RELEASE_URL, {
-      headers: { 'User-Agent': 'node-fetch' }
+      headers: ghHeaders
     });
     if (!relRes.ok) throw new Error('Failed to fetch AOD release info: HTTP ' + relRes.status);
     const relData = await relRes.json();

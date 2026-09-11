@@ -27,6 +27,8 @@ jobs:
           node-version: '20'
 
       - name: Run Script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node generate_mapping.js
 
       - name: Commit and Push Changes
