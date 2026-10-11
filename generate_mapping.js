@@ -17,6 +17,14 @@ const FRIBB_URL = 'https://raw.githubusercontent.com/Fribb/anime-lists/master/an
 const CACHE_FILE = path.join(__dirname, 'anime-cache.json');
 const OUTPUT_FILE = path.join(__dirname, 'mal-tmdb-mapping.json');
 
+/**
+ * Upstream Fribb corrections for split-cour anime where TMDB stores all cours in Season 1.
+ */
+const CORRECTIONS = {
+  // Blue Box Season 2 (MAL 61323) is part of TMDB Season 1 starting at episode 26 (offset 25)
+  61323: { season: 1, episode_offset: 25 },
+};
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function fetchMetadataForMalId(malId) {
@@ -144,6 +152,9 @@ async function generateMapping() {
         type: anime.type || null,
         imdb_id: imdbId,
       };
+      if (CORRECTIONS[malId] || CORRECTIONS[String(malId)]) {
+        Object.assign(mapping[malId], CORRECTIONS[malId] || CORRECTIONS[String(malId)]);
+      }
     }
 
     const count = Object.keys(mapping).length;
